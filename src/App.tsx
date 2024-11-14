@@ -1,4 +1,4 @@
-mport React, { useState } from 'react';
+import React, { useState } from 'react';
 import { createWorker } from 'tesseract.js';
 import FileUpload from './components/FileUpload';
 import ProgressBar from './components/ProgressBar';
