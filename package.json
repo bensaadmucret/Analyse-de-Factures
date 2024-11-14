@@ -1,7 +1,9 @@
 {
   "name": "invoice-processor",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "license": "MIT",
+  "author": "Bensaad Mohammed",
   "type": "module",
   "scripts": {
     "dev": "vite",
