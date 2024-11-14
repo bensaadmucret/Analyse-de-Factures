@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { createWorker } from 'tesseract.js';
+import React, { useState, useEffect } from 'react';
+import { createWorker, Worker } from 'tesseract.js';
 import FileUpload from './components/FileUpload';
 import ProgressBar from './components/ProgressBar';
 import TextEditor from './components/TextEditor';
@@ -7,52 +7,81 @@ import InvoicePreview from './components/InvoicePreview';
 import { Scan, CheckCircle } from 'lucide-react';
 
 function App() {
+  // Définition d'un état pour le worker qui sera réutilisé
+  const [worker, setWorker] = useState<Worker | null>(null);
   const [extractedText, setExtractedText] = useState('');
-  const [progress, setProgress] = useState(0);
-  const [status, setStatus] = useState('');
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [ocrStatus, setOcrStatus] = useState({
+    isProcessing: false,
+    progress: 0,
+    status: '',
+    error: null as string | null,
+  });
+
+  // Initialisation du worker avec un effet, pour éviter de le recréer à chaque requête
+  useEffect(() => {
+    const initWorker = async () => {
+      const newWorker = await createWorker({ langPath: 'fra' });
+      setWorker(newWorker);
+    };
+    initWorker();
+
+    // Terminaison du worker au démontage du composant
+    return () => {
+      worker?.terminate();
+    };
+  }, []);
 
   const processImage = async (file: File) => {
-    setIsProcessing(true);
-    setStatus('Initialisation de l\'OCR...');
-    setProgress(0);
-    setError(null);
+    if (!worker) return;
 
-    // Créer un worker avec la langue française pré-configurée
-    const worker = await createWorker('fra');
+    // Mise à jour de l'état pour démarrer le traitement
+    setOcrStatus({
+      isProcessing: true,
+      progress: 0,
+      status: "Initialisation de l'OCR...",
+      error: null,
+    });
 
     try {
+      // Configuration du logger pour la progression
       worker.logger = (data) => {
         if (data.status === 'recognizing text') {
-          setProgress(data.progress * 100);
-          setStatus('Extraction du texte...');
+          setOcrStatus((prev) => ({
+            ...prev,
+            progress: data.progress * 100,
+            status: 'Extraction du texte...',
+          }));
         }
       };
 
       const { data: { text } } = await worker.recognize(file);
-      
+
       if (!text) {
-        throw new Error('Aucun texte n\'a été extrait de l\'image');
+        throw new Error("Aucun texte n'a été extrait de l'image");
       }
 
-      // Basic text cleanup
-      const cleanedText = text
-        .replace(/\s+/g, ' ')
-        .trim();
-
+      // Nettoyage du texte extrait
+      const cleanedText = text.replace(/\s+/g, ' ').replace(/[^\w\s.,]/g, '').trim();
       setExtractedText(cleanedText);
-      setProgress(100);
-      setStatus('Terminé!');
+
+      // Mise à jour de l'état pour marquer la fin du traitement
+      setOcrStatus({
+        isProcessing: false,
+        progress: 100,
+        status: 'Terminé!',
+        error: null,
+      });
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Une erreur est survenue lors du traitement de l\'image';
+      const errorMessage = err instanceof Error ? err.message : "Une erreur est survenue lors du traitement de l'image";
       console.error('Error processing image:', err);
-      setError(errorMessage);
-      setStatus('Échec');
-      setProgress(0);
-    } finally {
-      await worker.terminate();
-      setIsProcessing(false);
+
+      // Mise à jour de l'état en cas d'erreur
+      setOcrStatus({
+        isProcessing: false,
+        progress: 0,
+        status: 'Échec',
+        error: errorMessage,
+      });
     }
   };
 
@@ -76,21 +105,21 @@ function App() {
             <div className="bg-white rounded-xl shadow-sm p-6">
               <FileUpload 
                 onFileSelect={processImage}
-                disabled={isProcessing}
+                disabled={ocrStatus.isProcessing}
               />
             </div>
 
             {/* Progress Section */}
-            {isProcessing && (
+            {ocrStatus.isProcessing && (
               <div className="bg-white rounded-xl shadow-sm p-6">
-                <ProgressBar progress={progress} status={status} />
+                <ProgressBar progress={ocrStatus.progress} status={ocrStatus.status} />
               </div>
             )}
 
             {/* Error Message */}
-            {error && (
+            {ocrStatus.error && (
               <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-                <p className="text-sm text-red-600">{error}</p>
+                <p className="text-sm text-red-600">{ocrStatus.error}</p>
               </div>
             )}
 
